@@ -1,0 +1,52 @@
+# Maven build artifacts
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# IntelliJ IDEA files
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse files (if someone uses Eclipse)
+.classpath
+.project
+.settings/
+
+# VS Code files
+.vscode/
+
+# OS-specific files
+.DS_Store      # macOS
+Thumbs.db      # Windows
+*~             # Linux backup files
+
+# TitanDB-specific files
+logs/          # Log files
+*.log
+data/          # Database files (we'll commit test data separately)
+*.db
+*.titandb
+
+# Test output
+test-output/
+*.tmp
+
+# Java bytecode
+*.class
+
+# Package files
+*.jar
+*.war
+*.ear
+
+# Virtual machine crash logs
+hs_err_pid*
