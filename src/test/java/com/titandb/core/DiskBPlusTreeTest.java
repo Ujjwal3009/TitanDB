@@ -155,4 +155,22 @@ public class DiskBPlusTreeTest {
         tree = new DiskBPlusTree<>(TEST_DB, 4);
         assertNull(tree.search(10));
     }
+
+
+
+    @Test
+    @Order(10)
+    @DisplayName("Buffer pool statistics tracking")
+    public void testBufferPoolStats() throws IOException {
+        tree = new DiskBPlusTree<>(TEST_DB, 4, true);
+
+        tree.insert(10, "test");
+        tree.search(10);  // Should hit cache
+
+        String stats = tree.getBufferPoolStats();
+        assertNotNull(stats);
+        assertTrue(stats.contains("BufferPool"));
+        assertTrue(stats.contains("hits") || stats.contains("hitRate"));
+    }
+
 }

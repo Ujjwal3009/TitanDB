@@ -14,6 +14,9 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
 
     private final int order;
     private final DiskManager diskManager;
+    private final BufferPoolManager bufferPool;
+    private final boolean useCache;
+
     private int rootPageId;
     private boolean closed = false;
 
@@ -21,25 +24,41 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
     private final Map<LeafNode<K, V>, Integer> nodeToPageId;
 
     public DiskBPlusTree(String fileName, int order) throws IOException {
+        this(fileName, order, true);
+    }
+
+    public DiskBPlusTree(String fileName, int order, boolean useCache) throws IOException {
         this.order = order;
+        this.useCache = useCache;
         this.diskManager = new DiskManager(fileName);
+        this.bufferPool = useCache ? new BufferPoolManager(1000, diskManager) : null;
         this.nodeCache = new HashMap<>();
         this.nodeToPageId = new HashMap<>();
 
         loadHeader();
 
-        logger.info("Opened DiskBPlusTree: {} (order={}, root={})",
-                fileName, order, rootPageId);
+        logger.info("Opened DiskBPlusTree: {} (order={}, root={}, cache={})",
+                fileName, order, rootPageId, useCache ? "ON" : "OFF");
     }
 
     private void loadHeader() throws IOException {
-        Page headerPage = diskManager.readPage(0);
+        Page headerPage;
+        if (useCache) {
+            headerPage = bufferPool.fetchPage(0);
+        } else {
+            headerPage = diskManager.readPage(0);
+        }
+
         byte[] data = headerPage.getData();
         ByteBuffer buffer = ByteBuffer.wrap(data);
+        buffer.position(16);
 
-        buffer.position(16);  // Skip page header
         int version = buffer.getInt();
         this.rootPageId = buffer.getInt();
+
+        if (useCache) {
+            bufferPool.unpinPage(0, false);
+        }
 
         logger.debug("Loaded header: version={}, rootPageId={}", version, rootPageId);
     }
@@ -47,15 +66,26 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
     private void saveHeader() throws IOException {
         if (closed) return;
 
-        Page headerPage = diskManager.readPage(0);
+        Page headerPage;
+        if (useCache) {
+            headerPage = bufferPool.fetchPage(0);
+        } else {
+            headerPage = diskManager.readPage(0);
+        }
+
         byte[] data = headerPage.getData();
         ByteBuffer buffer = ByteBuffer.wrap(data);
-
         buffer.position(16);
+
         buffer.putInt(1);
         buffer.putInt(rootPageId);
 
-        diskManager.writePage(0, headerPage);
+        if (useCache) {
+            bufferPool.unpinPage(0, true);
+        } else {
+            diskManager.writePage(0, headerPage);
+        }
+
         logger.debug("Saved header: rootPageId={}", rootPageId);
     }
 
@@ -65,12 +95,16 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
             return nodeCache.get(pageId);
         }
 
-        Page page = diskManager.readPage(pageId);
-        byte[] data = page.getData();
+        Page page;
+        if (useCache) {
+            page = bufferPool.fetchPage(pageId);
+        } else {
+            page = diskManager.readPage(pageId);
+        }
 
-        // Read from data section
+        byte[] data = page.getData();
         ByteBuffer buffer = ByteBuffer.wrap(data);
-        buffer.position(Page.HEADER_SIZE);  // Position 16
+        buffer.position(Page.HEADER_SIZE);
 
         int dataLength = buffer.remaining();
         byte[] nodeData = new byte[dataLength];
@@ -81,6 +115,8 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
 
         nodeCache.put(pageId, node);
         nodeToPageId.put(node, pageId);
+
+        // Don't unpin yet - keep it pinned while in nodeCache
 
         logger.debug("Loaded node from page {}", pageId);
         return node;
@@ -110,6 +146,7 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         buffer.position(Page.HEADER_SIZE);
         buffer.put(nodeData);
 
+        // FIXED: Always write through DiskManager to update numPages
         diskManager.writePage(pageId, page);
 
         logger.debug("Saved node to page {} ({} bytes)", pageId, nodeData.length);
@@ -156,8 +193,17 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         return rootPageId;
     }
 
+    public String getBufferPoolStats() {
+        if (bufferPool != null) {
+            return bufferPool.getStatistics();
+        }
+        return "BufferPool: DISABLED";
+    }
+
     public String getStatistics() {
-        return diskManager.toString();
+        String diskStats = diskManager.toString();
+        String bufferStats = getBufferPoolStats();
+        return diskStats + "\n" + bufferStats;
     }
 
     @Override
@@ -167,6 +213,11 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         }
 
         closed = true;
+
+        if (bufferPool != null) {
+            bufferPool.flushAll();
+        }
+
         diskManager.flush();
         diskManager.close();
 
