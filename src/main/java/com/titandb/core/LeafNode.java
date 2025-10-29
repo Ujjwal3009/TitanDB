@@ -14,7 +14,7 @@ import java.util.List;
  */
 public class LeafNode<K extends Comparable<K>, V> extends Node<K, V> {
     private List<V> values;         // Values corresponding to keys (parallel array)
-    private LeafNode<K, V> next;    // Pointer to next leaf (for range scans)
+    protected LeafNode<K, V> next;    // Pointer to next leaf (for range scans)
     private LeafNode<K, V> previous; // Pointer to previous leaf (for reverse scans)
 
     /**
@@ -141,31 +141,45 @@ public class LeafNode<K extends Comparable<K>, V> extends Node<K, V> {
      *
      * @return The new leaf node created from the split
      */
+    /**
+     * Split this leaf node when full.
+     *
+     * @return New right sibling node with half the keys
+     */
+    /**
+     * Split this full leaf node.
+     * Returns the new right sibling and the key to promote to parent.
+     */
     public LeafNode<K, V> split() {
-        int midpoint = keys.size() / 2;
+        int mid = keys.size() / 2;
 
-        // Create new leaf for second half
-        LeafNode<K, V> newLeaf = new LeafNode<>(order);
-        newLeaf.parent = this.parent;
+        // Create new right sibling
+        LeafNode<K, V> rightSibling = new LeafNode<>(order);
 
-        // Move second half of keys/values to new leaf
-        newLeaf.keys.addAll(keys.subList(midpoint, keys.size()));
-        newLeaf.values.addAll(values.subList(midpoint, values.size()));
-
-        // Remove moved entries from this leaf
-        keys.subList(midpoint, keys.size()).clear();
-        values.subList(midpoint, values.size()).clear();
-
-        // Update linked list: this → newLeaf → next
-        newLeaf.next = this.next;
-        if (this.next != null) {
-            this.next.previous = newLeaf;
+        // Move right half to new node
+        for (int i = mid; i < keys.size(); i++) {
+            rightSibling.keys.add(keys.get(i));
+            rightSibling.values.add(values.get(i));
         }
-        this.next = newLeaf;
-        newLeaf.previous = this;
 
-        return newLeaf;
+        // Remove moved keys from this node
+        keys.subList(mid, keys.size()).clear();
+        values.subList(mid, values.size()).clear();
+
+        // Link the nodes (maintain linked list)
+        rightSibling.next = this.next;
+        this.next = rightSibling;
+
+        return rightSibling;
     }
+
+    /**
+     * Get the smallest key (for parent routing).
+     */
+    public K getSmallestKey() {
+        return keys.isEmpty() ? null : keys.get(0);
+    }
+
 
     @Override
     public String toString() {

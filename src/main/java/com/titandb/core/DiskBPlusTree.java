@@ -6,9 +6,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
+/**
+ * ULTRA-SIMPLIFIED: Single node, no splitting (for tonight).
+ * Week 4 will add proper multi-node support.
+ */
 public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(DiskBPlusTree.class);
 
@@ -116,8 +119,6 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         nodeCache.put(pageId, node);
         nodeToPageId.put(node, pageId);
 
-        // Don't unpin yet - keep it pinned while in nodeCache
-
         logger.debug("Loaded node from page {}", pageId);
         return node;
     }
@@ -146,7 +147,6 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         buffer.position(Page.HEADER_SIZE);
         buffer.put(nodeData);
 
-        // FIXED: Always write through DiskManager to update numPages
         diskManager.writePage(pageId, page);
 
         logger.debug("Saved node to page {} ({} bytes)", pageId, nodeData.length);
@@ -160,11 +160,9 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         if (rootPageId == -1) {
             LeafNode<K, V> root = new LeafNode<>(order);
             root.insert(key, value);
-
             saveNode(root);
             rootPageId = nodeToPageId.get(root);
             saveHeader();
-
             logger.info("Created root at page {}", rootPageId);
             return;
         }
@@ -173,7 +171,7 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         root.insert(key, value);
         saveNode(root);
 
-        logger.debug("Inserted key={} into root", key);
+        logger.debug("Inserted key={}", key);
     }
 
     public V search(K key) throws IOException {
