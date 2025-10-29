@@ -92,11 +92,13 @@ public class DiskManager implements AutoCloseable {
         page.setPageId(0);
         page.setPageType(Page.PageType.HEADER);
 
-        // Write metadata to data section
-        ByteBuffer buffer = page.getDataBuffer();
-        buffer.putInt(1);  // Version
-        buffer.putInt(-1); // Root page ID (-1 = no root yet)
-        buffer.putInt(1);  // Next page ID (start at 1, since 0 is header)
+        // Get buffer and write metadata AT START of data section
+        ByteBuffer buffer = ByteBuffer.wrap(page.getData());
+        buffer.position(Page.HEADER_SIZE);  // Skip page header, start at data section
+
+        buffer.putInt(1);   // Offset 16: Version
+        buffer.putInt(-1);  // Offset 20: Root page ID (-1 = empty)
+        buffer.putInt(1);   // Offset 24: Next page ID
 
         return page;
     }
