@@ -100,6 +100,26 @@ public abstract class Node<K extends Comparable<K>, V> {
         return -(low + 1); // Key not found, return insertion point
     }
 
+    /**
+     * Add a key directly to the keys list.
+     * Used during deserialization - bypasses normal insertion logic.
+     *
+     * @param key The key to add
+     */
+    public void addKey(K key) {
+        keys.add(key);
+    }
+
+    /**
+     * Get all keys as a new list.
+     * Used during serialization.
+     *
+     * @return Copy of the keys list
+     */
+    public List<K> getAllKeys() {
+        return new ArrayList<>(keys);
+    }
+
     @Override
     public String toString() {
         return keys.toString();
