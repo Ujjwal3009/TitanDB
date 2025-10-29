@@ -1,43 +1,52 @@
 package com.titandb;
 
-import com.titandb.core.BPlusTree;
+import com.titandb.core.DiskBPlusTree;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * TitanDB Demo Application.
- * Demonstrates basic usage of the B+ Tree storage engine.
- */
 public class Main {
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
-        logger.info("🗄️  TitanDB v0.1.0-alpha - In-Memory B+ Tree Demo");
+        try {
+            logger.info("🗄️  TitanDB Demo - Disk Persistence");
 
-        // Create a B+ tree
-        BPlusTree<Integer, String> db = new BPlusTree<>(4);
+            // First run: Insert data
+            logger.info("=== First Run: Inserting Data ===");
+            DiskBPlusTree<Integer, String> tree = new DiskBPlusTree<>("demo.titandb", 4);
+            tree.insert(10, "Alice");
+            tree.insert(20, "Bob");
+            tree.insert(30, "Charlie");
+            logger.info("Inserted 3 entries");
+            tree.close();
+            logger.info("Database closed. Data saved to disk.");
 
-        // Insert some data
-        logger.info("Inserting sample data...");
-        db.insert(10, "Alice");
-        db.insert(20, "Bob");
-        db.insert(30, "Charlie");
-        db.insert(40, "Dave");
-        db.insert(50, "Eve");
+            // Simulate restart
+            logger.info("\n=== Simulating Application Restart ===\n");
+            Thread.sleep(1000);
 
-        // Search
-        logger.info("Searching for key 30: {}", db.search(30));
+            // Second run: Load data
+            logger.info("=== Second Run: Loading Data ===");
+            DiskBPlusTree<Integer, String> tree2 = new DiskBPlusTree<>("demo.titandb", 4);
+            logger.info("Database reopened");
 
-        // Range scan
-        logger.info("Range scan [20, 50):");
-        db.rangeScan(20, 50).forEach(entry ->
-                logger.info("  {} -> {}", entry.getKey(), entry.getValue())
-        );
+            String alice = tree2.search(10);
+            String bob = tree2.search(20);
+            String charlie = tree2.search(30);
 
-        // Print tree structure
-        db.printTree();
+            logger.info("Search results:");
+            logger.info("  10 → {}", alice);
+            logger.info("  20 → {}", bob);
+            logger.info("  30 → {}", charlie);
 
-        logger.info("✅ Demo completed successfully!");
-        logger.info("Total keys: {}", db.size());
+            if (alice.equals("Alice") && bob.equals("Bob") && charlie.equals("Charlie")) {
+                logger.info("\n✅ SUCCESS! Data persisted across restarts!");
+            }
+
+            tree2.close();
+
+        } catch (Exception e) {
+            logger.error("Error", e);
+        }
     }
 }
