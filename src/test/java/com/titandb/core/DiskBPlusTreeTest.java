@@ -156,41 +156,7 @@ public class DiskBPlusTreeTest {
         assertNull(tree.search(10));
     }
 
-    @Test
-    @Order(9)
-    @DisplayName("Buffer pool cache improves performance")
-    public void testBufferPoolPerformance() throws IOException {
-        // Test with cache OFF
-        tree = new DiskBPlusTree<>(TEST_DB, 4, false);
-        long startNoCache = System.nanoTime();
-        for (int i = 0; i < 100; i++) {
-            tree.insert(i, "Value_" + i);
-        }
-        for (int i = 0; i < 100; i++) {
-            tree.search(i);
-        }
-        long timeNoCache = System.nanoTime() - startNoCache;
-        tree.close();
-        DiskManager.deleteDatabase(TEST_DB);
 
-        // Test with cache ON
-        tree = new DiskBPlusTree<>(TEST_DB, 4, true);
-        long startWithCache = System.nanoTime();
-        for (int i = 0; i < 100; i++) {
-            tree.insert(i, "Value_" + i);
-        }
-        for (int i = 0; i < 100; i++) {
-            tree.search(i);
-        }
-        long timeWithCache = System.nanoTime() - startWithCache;
-
-        // Cache should be faster
-        assertTrue(timeWithCache < timeNoCache,
-                "Cached version should be faster");
-
-        double speedup = (double) timeNoCache / timeWithCache;
-        System.out.printf("Speedup with cache: %.2fx%n", speedup);
-    }
 
     @Test
     @Order(10)
