@@ -5,3 +5,4 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/Ujjwal3009/TitanDB)
 [![Release](https://img.shields.io/github/v/release/yourusername/titandb?include_prereleases)](https://github.com/Ujjwal3009/TitanDB/releases)
 [![Coverage](https://img.shields.io/badge/coverage-70%25-yellowgreen)](target/site/jacoco/index.html)
+[![Code Flow Docs](https://img.shields.io/badge/codeflow-yellowgreen)](https://docs.google.com/document/d/1B-bqt23Mqroej9MOWvT275hZslvYey5qXdNJsmXH2rc/edit?usp=sharing)
