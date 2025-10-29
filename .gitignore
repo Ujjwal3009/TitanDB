@@ -43,6 +43,7 @@ test-output/
 # Java bytecode
 *.class
 
+
 # Package files
 *.jar
 *.war
