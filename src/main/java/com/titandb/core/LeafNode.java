@@ -194,4 +194,42 @@ public class LeafNode<K extends Comparable<K>, V> extends Node<K, V> {
         sb.append("]");
         return sb.toString();
     }
+
+    /**
+     * Get minimum key (for parent routing after split)
+     */
+    public K getMinKey() {
+        return keys.isEmpty() ? null : keys.get(0);
+    }
+
+    /**
+     * Clear all entries
+     */
+    public void clear() {
+        keys.clear();
+        values.clear();
+    }
+
+    /**
+     * Split with result wrapper
+     */
+    public SplitResult<K, V> splitWithResult() {
+        LeafNode<K, V> newNode = split();
+        K separatorKey = newNode.getMinKey();
+        return new SplitResult<>(separatorKey, newNode);
+    }
+
+    /**
+     * Split result for cleaner API
+     */
+    public static class SplitResult<K extends Comparable<K>, V> {
+        public final K pushedUpKey;
+        public final LeafNode<K, V> newNode;
+
+        public SplitResult(K pushedUpKey, LeafNode<K, V> newNode) {
+            this.pushedUpKey = pushedUpKey;
+            this.newNode = newNode;
+        }
+    }
+
 }
