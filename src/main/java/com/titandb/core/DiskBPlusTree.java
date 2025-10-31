@@ -8,10 +8,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-/**
- * ULTRA-SIMPLIFIED: Single node, no splitting (for tonight).
- * Week 4 will add proper multi-node support.
- */
 public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(DiskBPlusTree.class);
 
@@ -21,6 +17,7 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
     private final boolean useCache;
 
     private int rootPageId;
+    private long rootPageLSN = -1;
     private boolean closed = false;
 
     private final Map<Integer, LeafNode<K, V>> nodeCache;
@@ -40,8 +37,8 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
 
         loadHeader();
 
-        logger.info("Opened DiskBPlusTree: {} (order={}, root={}, cache={})",
-                fileName, order, rootPageId, useCache ? "ON" : "OFF");
+        logger.info("Opened DiskBPlusTree: {} (order={}, root={}, lsn={}, cache={})",
+                fileName, order, rootPageId, rootPageLSN, useCache ? "ON" : "OFF");
     }
 
     private void loadHeader() throws IOException {
@@ -63,7 +60,26 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
             bufferPool.unpinPage(0, false);
         }
 
-        logger.debug("Loaded header: version={}, rootPageId={}", version, rootPageId);
+        // ★ RESTORE rootPageLSN from disk if root exists
+        if (rootPageId != -1) {
+            Page rootPage;
+            if (useCache) {
+                rootPage = bufferPool.fetchPage(rootPageId);
+            } else {
+                rootPage = diskManager.readPage(rootPageId);
+            }
+
+            this.rootPageLSN = rootPage.getPageLSN();
+
+            if (useCache) {
+                bufferPool.unpinPage(rootPageId, false);
+            }
+
+            logger.debug("Restored rootPageLSN from disk: {}", rootPageLSN);
+        }
+
+        logger.debug("Loaded header: version={}, rootPageId={}, rootPageLSN={}",
+                version, rootPageId, rootPageLSN);
     }
 
     private void saveHeader() throws IOException {
@@ -119,12 +135,17 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         nodeCache.put(pageId, node);
         nodeToPageId.put(node, pageId);
 
-        logger.debug("Loaded node from page {}", pageId);
+        logger.debug("Loaded node from page {} (LSN: {})", pageId, page.getPageLSN());
         return node;
     }
 
     @SuppressWarnings("unchecked")
     private void saveNode(LeafNode<K, V> node) throws IOException {
+        saveNode(node, -1);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void saveNode(LeafNode<K, V> node, long lsn) throws IOException {
         if (closed) return;
 
         Integer pageId = nodeToPageId.get(node);
@@ -142,6 +163,11 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         page.setPageId(pageId);
         page.setPageType(Page.PageType.LEAF);
 
+        if (lsn >= 0) {
+            page.setPageLSN(lsn);
+            logger.debug("Set page {} LSN to {}", pageId, lsn);
+        }
+
         byte[] pageBytes = page.getData();
         ByteBuffer buffer = ByteBuffer.wrap(pageBytes);
         buffer.position(Page.HEADER_SIZE);
@@ -149,7 +175,8 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
 
         diskManager.writePage(pageId, page);
 
-        logger.debug("Saved node to page {} ({} bytes)", pageId, nodeData.length);
+        logger.debug("Saved node to page {} ({} bytes, LSN: {})",
+                pageId, nodeData.length, lsn >= 0 ? lsn : "none");
     }
 
     public void insert(K key, V value) throws IOException {
@@ -174,6 +201,30 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         logger.debug("Inserted key={}", key);
     }
 
+    public void insertWithLSN(K key, V value, long lsn) throws IOException {
+        if (closed) {
+            throw new IllegalStateException("Tree is closed");
+        }
+
+        if (rootPageId == -1) {
+            LeafNode<K, V> root = new LeafNode<>(order);
+            root.insert(key, value);
+            saveNode(root, lsn);
+            rootPageId = nodeToPageId.get(root);
+            rootPageLSN = lsn;
+            saveHeader();
+            logger.info("Created root at page {} with LSN {}", rootPageId, lsn);
+            return;
+        }
+
+        LeafNode<K, V> root = loadNode(rootPageId);
+        root.insert(key, value);
+        saveNode(root, lsn);
+        rootPageLSN = lsn;
+
+        logger.debug("Inserted key={} with LSN={}", key, lsn);
+    }
+
     public V search(K key) throws IOException {
         if (closed) {
             throw new IllegalStateException("Tree is closed");
@@ -191,6 +242,10 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
         return rootPageId;
     }
 
+    public long getRootPageLSN() throws IOException {
+        return rootPageLSN;
+    }
+
     public String getBufferPoolStats() {
         if (bufferPool != null) {
             return bufferPool.getStatistics();
@@ -201,7 +256,8 @@ public class DiskBPlusTree<K extends Comparable<K>, V> implements AutoCloseable 
     public String getStatistics() {
         String diskStats = diskManager.toString();
         String bufferStats = getBufferPoolStats();
-        return diskStats + "\n" + bufferStats;
+
+        return diskStats + "\n" + bufferStats + "\nRoot Page LSN: " + rootPageLSN;
     }
 
     @Override

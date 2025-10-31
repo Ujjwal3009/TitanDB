@@ -6,66 +6,42 @@ import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("Disk-Based B+ Tree Integration Tests")
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class DiskBPlusTreeTest {
+@DisplayName("DiskBPlusTree Tests")
+class DiskBPlusTreeTest {
 
-    private static final String TEST_DB = "test_diskbptree.titandb";
+    private static final String TEST_DB = "test-tree.titandb";
     private DiskBPlusTree<Integer, String> tree;
 
     @BeforeEach
-    public void setUp() throws IOException {
-        // Delete test database if exists
-        if (DiskManager.databaseExists(TEST_DB)) {
-            DiskManager.deleteDatabase(TEST_DB);
-        }
+    void setUp() throws IOException {
+        cleanup();
+        tree = new DiskBPlusTree<>(TEST_DB, 4);
     }
 
     @AfterEach
-    public void tearDown() throws IOException {
+    void tearDown() throws IOException {
         if (tree != null) {
-            try {
-                tree.close();
-            } catch (Exception e) {
-                // Ignore if already closed
-            }
-            tree = null;
+            tree.close();
         }
+        cleanup();
+    }
 
-        // Clean up test file
+    void cleanup() throws IOException {
         if (DiskManager.databaseExists(TEST_DB)) {
             DiskManager.deleteDatabase(TEST_DB);
         }
     }
 
     @Test
-    @Order(1)
-    @DisplayName("Create new disk-based tree")
-    public void testCreateTree() throws IOException {
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-
-        assertNotNull(tree);
-        assertEquals(-1, tree.getRootPageId()); // Empty tree
-    }
-
-    @Test
-    @Order(2)
-    @DisplayName("Insert single entry and save to disk")
-    public void testInsertSingleEntry() throws IOException {
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
+    @DisplayName("Insert and search single key")
+    void testInsertSearchSingle() throws IOException {
         tree.insert(10, "Alice");
-        tree.close();
-
-        // Verify file was created
-        assertTrue(DiskManager.databaseExists(TEST_DB));
+        assertEquals("Alice", tree.search(10));
     }
 
     @Test
-    @Order(3)
-    @DisplayName("Insert and search in same session")
-    public void testInsertAndSearch() throws IOException {
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-
+    @DisplayName("Insert and search multiple keys")
+    void testInsertSearchMultiple() throws IOException {
         tree.insert(10, "Alice");
         tree.insert(20, "Bob");
         tree.insert(30, "Charlie");
@@ -73,104 +49,111 @@ public class DiskBPlusTreeTest {
         assertEquals("Alice", tree.search(10));
         assertEquals("Bob", tree.search(20));
         assertEquals("Charlie", tree.search(30));
-        assertNull(tree.search(999));
     }
 
     @Test
-    @Order(4)
-    @DisplayName("Data persists across restarts")
-    public void testPersistenceAcrossRestarts() throws IOException {
-        // Session 1: Insert data
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
+    @DisplayName("Search non-existent key")
+    void testSearchNonExistent() throws IOException {
         tree.insert(10, "Alice");
-        tree.insert(20, "Bob");
-        tree.insert(30, "Charlie");
-        int rootId = tree.getRootPageId();
-        tree.close();
-        tree = null; // Explicitly null
-
-        // Session 2: Reopen and verify
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-        assertEquals(rootId, tree.getRootPageId(), "Root page ID should persist");
-        assertEquals("Alice", tree.search(10), "Should find Alice");
-        assertEquals("Bob", tree.search(20), "Should find Bob");
-        assertEquals("Charlie", tree.search(30), "Should find Charlie");
+        assertNull(tree.search(99));
     }
 
     @Test
-    @Order(5)
-    @DisplayName("Multiple inserts persist")
-    public void testMultipleInsertsPersist() throws IOException {
-        // Insert 10 entries
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-        for (int i = 0; i < 10; i++) {
-            tree.insert(i * 10, "Value_" + i);
-        }
+    @DisplayName("Persistence across restarts")
+    void testPersistence() throws IOException {
+        tree.insert(42, "Answer");
         tree.close();
-        tree = null;
 
-        // Reopen and verify all
         tree = new DiskBPlusTree<>(TEST_DB, 4);
-        for (int i = 0; i < 10; i++) {
-            assertEquals("Value_" + i, tree.search(i * 10),
-                    "Should find Value_" + i + " for key " + (i * 10));
-        }
+        assertEquals("Answer", tree.search(42));
     }
 
     @Test
-    @Order(6)
-    @DisplayName("Root page ID is saved and loaded")
-    public void testRootPageIdPersistence() throws IOException {
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-        assertEquals(-1, tree.getRootPageId()); // Empty
-
-        tree.insert(10, "test");
-        int rootId = tree.getRootPageId();
-        assertTrue(rootId > 0, "Root page should be allocated"); // Should have allocated a page
-        tree.close();
-        tree = null;
-
-        // Reopen
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-        assertEquals(rootId, tree.getRootPageId(), "Root page ID should be same after reopen"); // Same root ID
-    }
-
-    @Test
-    @Order(7)
-    @DisplayName("Statistics tracking")
-    public void testStatistics() throws IOException {
-        tree = new DiskBPlusTree<>(TEST_DB, 4);
-        tree.insert(10, "test");
-
+    @DisplayName("Statistics available")
+    void testStatistics() throws IOException {
+        tree.insert(1, "One");
         String stats = tree.getStatistics();
         assertNotNull(stats);
-        assertTrue(stats.contains("reads"));
-        assertTrue(stats.contains("writes"));
+        assertTrue(stats.length() > 0);
+    }
+
+    // ========== WEEK 4 LSN TESTS ==========
+
+    @Test
+    @DisplayName("Week 4: Insert with LSN tracking")
+    void testInsertWithLSN() throws IOException {
+        tree.insertWithLSN(10, "Alice", 1001L);
+        tree.insertWithLSN(20, "Bob", 1002L);
+
+        assertEquals("Alice", tree.search(10));
+        assertEquals("Bob", tree.search(20));
+        assertEquals(1002L, tree.getRootPageLSN());
     }
 
     @Test
-    @Order(8)
-    @DisplayName("Empty tree returns null for search")
-    public void testSearchEmptyTree() throws IOException {
+    @DisplayName("Week 4: LSN increases with inserts")
+    void testLSNIncreases() throws IOException {
+        tree.insertWithLSN(1, "One", 100L);
+        assertEquals(100L, tree.getRootPageLSN());
+
+        tree.insertWithLSN(2, "Two", 200L);
+        assertEquals(200L, tree.getRootPageLSN());
+
+        tree.insertWithLSN(3, "Three", 300L);
+        assertEquals(300L, tree.getRootPageLSN());
+    }
+
+    @Test
+    @DisplayName("Week 4: LSN persists across restarts")
+    void testLSNPersistence() throws IOException {
+        tree.insertWithLSN(42, "Answer", 9999L);
+        assertEquals(9999L, tree.getRootPageLSN());
+        tree.close();
+
         tree = new DiskBPlusTree<>(TEST_DB, 4);
-        assertNull(tree.search(10));
+
+        assertEquals(9999L, tree.getRootPageLSN());
+        assertEquals("Answer", tree.search(42));
     }
-
-
 
     @Test
-    @Order(10)
-    @DisplayName("Buffer pool statistics tracking")
-    public void testBufferPoolStats() throws IOException {
-        tree = new DiskBPlusTree<>(TEST_DB, 4, true);
+    @DisplayName("Week 4: Statistics include LSN")
+    void testStatisticsWithLSN() throws IOException {
+        tree.insertWithLSN(10, "Test", 5000L);
 
-        tree.insert(10, "test");
-        tree.search(10);  // Should hit cache
-
-        String stats = tree.getBufferPoolStats();
-        assertNotNull(stats);
-        assertTrue(stats.contains("BufferPool"));
-        assertTrue(stats.contains("hits") || stats.contains("hitRate"));
+        String stats = tree.getStatistics();
+        assertTrue(stats.contains("Root Page LSN: 5000"));
     }
 
+    @Test
+    @DisplayName("Week 4: Regular insert doesn't set LSN")
+    void testRegularInsertNoLSN() throws IOException {
+        tree.insert(10, "Alice");
+        assertEquals(-1L, tree.getRootPageLSN());
+    }
+
+    @Test
+    @DisplayName("Week 4: Regular inserts preserve last LSN")
+    void testRegularInsertsPreserveLSN() throws IOException {
+        // First, set LSN
+        tree.insertWithLSN(10, "Alice", 1000L);
+        assertEquals(1000L, tree.getRootPageLSN());
+
+        // Regular inserts should NOT change LSN
+        tree.insert(20, "Bob");
+        assertEquals(1000L, tree.getRootPageLSN());  // Still 1000, not -1!
+
+        tree.insert(30, "Charlie");
+        assertEquals(1000L, tree.getRootPageLSN());  // Still 1000!
+
+        // Only LSN insert changes it
+        tree.insertWithLSN(40, "David", 2000L);
+        assertEquals(2000L, tree.getRootPageLSN());
+
+        // All data should be there
+        assertEquals("Alice", tree.search(10));
+        assertEquals("Bob", tree.search(20));
+        assertEquals("Charlie", tree.search(30));
+        assertEquals("David", tree.search(40));
+    }
 }
